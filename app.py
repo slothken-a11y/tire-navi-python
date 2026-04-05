@@ -1,29 +1,28 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import math
 import re
+import datetime
 
 # =========================================================================
 # ⚙️ ページ設定
 # =========================================================================
 st.set_page_config(page_title="Tire-Navi 2026", page_icon="🚗", layout="wide")
 
-# カスタムCSSを注入して全体のデザインを調整
 st.markdown("""
 <style>
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
     h1, h2, h3 { color: #1e293b; font-weight: 800; }
-    .stSelectbox label, .stSlider label, .stCheckbox label, .stRadio label { font-weight: bold; color: #334155; }
+    .stSelectbox label, .stSlider label, .stCheckbox label, .stRadio label, .stTextInput label { font-weight: bold; color: #334155; }
     hr { margin-top: 1.5rem; margin-bottom: 1.5rem; }
-    
-    /* カードの高さを揃えるためのCSS */
     [data-testid="column"] { display: flex; flex-direction: column; }
     [data-testid="column"] > div { flex: 1; display: flex; flex-direction: column; }
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================================
-# 📊 マスターデータ定義 (内部の商品・性能マスタ)
+# 📊 マスターデータ定義
 # =========================================================================
 BRAND_MASTER = {
     "軽自動車": [
@@ -98,16 +97,10 @@ def get_gdrive_direct_url(url):
     file_id = ""
     match1 = re.search(r"/file/d/([^/]+)/", url)
     match2 = re.search(r"/d/([^/]+)/", url)
-    
-    if len(url) > 20 and "/" not in url:
-        file_id = url
-    elif match1:
-        file_id = match1.group(1)
-    elif match2:
-        file_id = match2.group(1)
-    
-    if file_id:
-        return f"https://drive.google.com/uc?export=download&id={file_id}"
+    if len(url) > 20 and "/" not in url: file_id = url
+    elif match1: file_id = match1.group(1)
+    elif match2: file_id = match2.group(1)
+    if file_id: return f"https://drive.google.com/uc?export=download&id={file_id}"
     return url
 
 @st.cache_data(ttl=3600)
@@ -119,7 +112,6 @@ def load_csv_data(gdrive_url):
         return df, True, ""
     except Exception as e:
         return pd.DataFrame(), False, str(e)
-
 
 # =========================================================================
 # 🧠 ロジック関数群
@@ -133,8 +125,7 @@ def is_brand_match(search_names, csv_product_name):
     names = search_names if isinstance(search_names, list) else [search_names]
     for n in names:
         norm_master = normalize_name(n)
-        if norm_master in norm_csv or norm_csv in norm_master:
-            return True
+        if norm_master in norm_csv or norm_csv in norm_master: return True
     return False
 
 def get_price_data(df, is_loaded, brand, width, profile, inch):
@@ -142,14 +133,12 @@ def get_price_data(df, is_loaded, brand, width, profile, inch):
     if is_loaded and not df.empty:
         norm_maker_master = normalize_name(brand["maker"])
         search_names = brand.get("searchNames", [brand["name"]])
-        
         for _, row in df.iterrows():
             try:
                 csv_w = int(float(row.get("width", row.get("幅", 0))))
                 csv_p = int(float(row.get("profile", row.get("扁平率", 0))))
                 csv_i = int(float(row.get("inch", row.get("インチ", 0))))
-                if csv_w != width or csv_p != profile or csv_i != inch:
-                    continue
+                if csv_w != width or csv_p != profile or csv_i != inch: continue
             except: continue
             
             maker_col = row.get("maker", row.get("メーカー", ""))
@@ -167,12 +156,10 @@ def get_price_data(df, is_loaded, brand, width, profile, inch):
                 if k in exact_hit and str(exact_hit[k]).replace('.0','').isdigit():
                     return int(float(exact_hit[k]))
             return 0
-            
         t1 = get_val(["price_tier1_4units", "第１提案\n4本コミコミ価格", "①"])
         t2 = get_val(["price_tier2_4units", "第２提案\n４本コミコミ価格", "店長価格"])
         mgr = get_val(["price_manager_4units", "最終原価"])
         actual_name = exact_hit.get("product_name", exact_hit.get("商品名", brand["name"]))
-
         return {"tier1": t1, "tier2": t2, "manager": mgr, "actualName": actual_name, "isSimulated": False}
     
     base = inch * inch * 130
@@ -202,38 +189,39 @@ def get_ai_recommendation(current_rank, proposed_rank, idx):
     return {"text": "おすすめ", "color": "#3b82f6"}
 
 # =========================================================================
-# 🎨 UI / メイン画面
+# 🎨 UI / サイドバー設定
 # =========================================================================
-
 with st.sidebar:
     st.title("⚙️ システム設定")
-    st.subheader("Google Drive マスター連携")
     default_gdrive_url = "https://drive.google.com/file/d/1mY0iZIlqOl3dfuLXi5bxzWCkOJnkg99a/view?usp=sharing"
     gdrive_url = st.text_input("CSV共有リンクURL", value=default_gdrive_url)
     
     df_master = pd.DataFrame()
     is_csv_loaded = False
-    
     if gdrive_url:
-        with st.spinner("マスターデータを読み込み中..."):
+        with st.spinner("マスター読込中..."):
             df_master, is_csv_loaded, err_msg = load_csv_data(gdrive_url)
-        if is_csv_loaded:
-            st.success(f"接続完了（{len(df_master)}件）")
-        else:
-            st.error(f"読込エラー: {err_msg}")
+        if is_csv_loaded: st.success(f"接続完了（{len(df_master)}件）")
+        else: st.error(f"読込エラー: {err_msg}")
             
     st.divider()
-    st.subheader("表示モード")
     price_mode_options = {"店頭表示": "tier1", "接客提案": "tier2", "店長決裁": "manager"}
     selected_mode_label = st.radio("価格モード切替", list(price_mode_options.keys()))
     price_mode = price_mode_options[selected_mode_label]
 
 st.title("🚗 Tire-Navi 2026")
 
-col1, col2 = st.columns([1, 1])
+# =========================================================================
+# 📝 入力エリア
+# =========================================================================
+st.subheader("1. お客様・車両情報")
+col_c1, col_c2 = st.columns(2)
+customer_name = col_c1.text_input("お客様名 (任意)", placeholder="例: 山田 太郎")
+car_model = col_c2.text_input("車種 (任意)", placeholder="例: N-BOX")
 
+col1, col2 = st.columns([1, 1])
 with col1:
-    st.subheader("1. 車両・サイズ情報")
+    st.subheader("2. タイヤサイズ・使用状況")
     category = st.selectbox("車種カテゴリ", list(BRAND_MASTER.keys()))
     
     if "prev_cat" not in st.session_state: st.session_state.prev_cat = category
@@ -252,69 +240,52 @@ with col1:
     tire_width = w_col.selectbox("タイヤ幅", WIDTH_OPTIONS, index=st.session_state.w_idx)
     tire_profile = p_col.selectbox("扁平率", PROFILE_OPTIONS, index=st.session_state.p_idx)
     tire_inch = i_col.selectbox("インチ", INCH_OPTIONS, index=st.session_state.i_idx)
-    
     monthly_km = st.slider("月間平均走行距離 (km)", 300, 3000, 1000, 100)
 
 with col2:
-    st.subheader("2. 現着タイヤ状態")
+    st.subheader("3. 現着タイヤ状態")
     rank_options = {"プレミアム (松)": "松", "スタンダード (竹)": "竹", "ローコスト (梅)": "梅"}
-    current_tire_rank_label = st.selectbox("現在装着されているタイヤのグレード", list(rank_options.keys()), index=1)
-    current_tire_rank = rank_options[current_tire_rank_label]
-    
+    current_tire_rank = rank_options[st.selectbox("現在装着されているタイヤのグレード", list(rank_options.keys()), index=1)]
     tread_depth = st.slider("最も少ない残溝 (mm)", 0.0, 8.0, 3.0, 0.1)
     years_old = st.slider("使用年数 (製造年から)", 1, 10, 4, 1)
-    
     chk_col1, chk_col2 = st.columns(2)
     has_cracks = chk_col1.checkbox("ひび割れ・劣化あり", value=False)
     has_uneven_wear = chk_col2.checkbox("肩べり(偏摩耗)あり", value=False)
 
 st.divider()
 
+# =========================================================================
+# 🧮 診断＆計算ロジック
+# =========================================================================
 current_size_str = f"{tire_width}/{tire_profile}R{tire_inch}"
 is_tread_warning = tread_depth <= 3.5
 is_tread_danger = tread_depth <= 1.6
+remaining_life_months = max(0, math.floor(((tread_depth - 1.6) * 5000) / monthly_km)) if tread_depth > 1.6 else 0
 
-remaining_life_months = 0
-if tread_depth > 1.6:
-    remaining_life_months = max(0, math.floor(((tread_depth - 1.6) * 5000) / monthly_km))
+# 診断結果をデータとしてまとめる（画面表示＆PDF用）
+alerts = []
+if is_tread_danger:
+    alerts.append({"type": "danger", "title": "車検NG 限界到達", "text": "法律で定められた限界(1.6mm)に達しています。直ちに交換が必要です。"})
+else:
+    msg = f"車検NG(1.6mm)まで あと {remaining_life_months} ヶ月（走行換算: 約{remaining_life_months * monthly_km:,}km）"
+    if has_uneven_wear: msg += " ※偏摩耗のため寿命短縮"
+    alerts.append({"type": "info", "title": "残溝予測", "text": msg})
 
-st.subheader("📊 診断結果レポート")
-diag_col1, diag_col2 = st.columns([1, 2])
+if is_tread_warning and not is_tread_danger: alerts.append({"type": "warning", "text": "残溝注意: 3.5mm以下です。雨の日の停止距離が伸び、追突リスクが高まっています。"})
+if has_cracks: alerts.append({"type": "danger", "text": "ひび割れ危険: ゴム劣化により内部に雨水が浸透し、バーストの危険性が高い状態です。"})
+if not has_cracks and years_old >= 4: alerts.append({"type": "warning", "text": "経年劣化注意: ゴムが硬化し、雨の日のグリップ力が低下しています。"})
+if has_uneven_wear: alerts.append({"type": "warning", "text": "偏摩耗（肩べり）: タイヤの端が極端に減っており、本来の寿命より早く使えなくなります。"})
+if len(alerts) == 1 and alerts[0]["type"] == "info" and not has_cracks and years_old < 4 and not has_uneven_wear:
+    alerts.append({"type": "success", "text": "良好: 目立った危険な状態は見当たりません。"})
 
-with diag_col1:
-    if is_tread_danger:
-        st.error(f"#### 🚨 車検NG 限界到達\n法律で定められた限界(1.6mm)に達しています。")
-    else:
-        st.success(f"#### 車検NG(1.6mm)まで あと {remaining_life_months} ヶ月\n（走行換算: 約{remaining_life_months * monthly_km:,}km）")
-        if has_uneven_wear:
-            st.caption("※偏摩耗があるため寿命を短く算定しています")
-
-with diag_col2:
-    if is_tread_warning and not is_tread_danger:
-        st.warning("⚠️ **残溝注意:** 3.5mm以下です。雨の日の停止距離が約1.3m伸び、追突リスクが高まっています。")
-    if is_tread_danger:
-        st.error("🚨 **危険:** 直ちに交換が必要です。整備不良となります。")
-    if has_cracks:
-        st.error("🚨 **ひび割れ危険:** ゴム劣化により内部に雨水が浸透し、バースト(破裂)の危険性が高い状態です。")
-    if not has_cracks and years_old >= 4:
-        st.warning("⚠️ **経年劣化注意:** ゴムが硬化し、雨の日のグリップ力が低下しています。")
-    if has_uneven_wear:
-        st.warning("⚠️ **偏摩耗（肩べり）:** タイヤの端が極端に減っており、本来の寿命より早く使えなくなります。")
-    if not is_tread_warning and not has_cracks and years_old < 4 and not has_uneven_wear:
-        st.success("✅ **良好:** 目立った危険な状態は見当たりません。引き続き定期点検をおすすめします。")
-
-st.divider()
-
+# 提案ブランドの選定
 all_brands = BRAND_MASTER.get(category, [])
 matsus = [b for b in all_brands if b["rank"] == '松']
 takes = [b for b in all_brands if b["rank"] == '竹']
 umes = [b for b in all_brands if b["rank"] == '梅']
 
-selected_brands = []
-if current_tire_rank == '松':
-    selected_brands = [matsus[0], matsus[1] if len(matsus)>1 else takes[0], takes[0] if len(matsus)>1 else takes[1] if len(takes)>1 else umes[0]]
-elif current_tire_rank == '竹':
-    selected_brands = [matsus[0], takes[0], umes[0]]
+if current_tire_rank == '松': selected_brands = [matsus[0], matsus[1] if len(matsus)>1 else takes[0], takes[0] if len(matsus)>1 else takes[1] if len(takes)>1 else umes[0]]
+elif current_tire_rank == '竹': selected_brands = [matsus[0], takes[0], umes[0]]
 else:
     if len(umes) >= 3: selected_brands = [umes[0], umes[1], umes[2]]
     elif len(umes) >= 2 and len(takes) >= 1: selected_brands = [takes[0], umes[0], umes[1]]
@@ -330,68 +301,231 @@ proposals = []
 for idx, brand in enumerate(valid_brands):
     price_data = get_price_data(df_master, is_csv_loaded, brand, tire_width, tire_profile, tire_inch)
     current_price = price_data.get(price_mode, 0)
-    
     effective_groove = 6.4 * 0.8 if has_uneven_wear else 6.4
     life_months = math.floor((effective_groove * brand["life"]) / monthly_km)
-    cost_per_month = round(current_price / life_months) if life_months > 0 else 0
-    ai_advice = get_ai_recommendation(current_tire_rank, brand["rank"], idx)
-    
     proposals.append({
         **brand,
         "name": price_data["actualName"],
         "price": current_price,
         "lifeMonths": life_months,
-        "costPerMonth": cost_per_month,
+        "costPerMonth": round(current_price / life_months) if life_months > 0 else 0,
         "isSimulated": price_data["isSimulated"],
-        "aiAdvice": ai_advice
+        "aiAdvice": get_ai_recommendation(current_tire_rank, brand["rank"], idx)
     })
 
-# --- 提案表示UI（Streamlitのカラム機能を利用して安全に描画） ---
-st.subheader(f"💡 【{current_size_str}】 最適タイヤ推奨プラン (4本コミコミ)")
+# =========================================================================
+# 🖥️ タブによる表示切替 (接客画面 / PDF印刷)
+# =========================================================================
+tab1, tab2 = st.tabs(["💻 接客・診断画面", "🖨️ 提案書印刷 (PDF出力)"])
 
-# インデントを持たないワンライナー文字列としてHTMLを返すヘルパー関数
-def get_progress_bar_html(label, value):
-    pct = (value / 5) * 100
-    return f'<div style="display: flex; align-items: center; font-size: 11px; margin-bottom: 4px;"><span style="width: 60px; color: #475569; font-weight: bold;">{label}</span><div style="flex: 1; background-color: #e2e8f0; height: 6px; border-radius: 9999px; overflow: hidden; margin: 0 8px;"><div style="background-color: #2563eb; height: 100%; width: {pct}%;"></div></div><span style="width: 15px; text-align: right; color: #334155; font-weight: bold;">{value}</span></div>'
-
-# Streamlitの標準機能で横に3つ並べる
-cols = st.columns(len(proposals))
-
-for idx, p in enumerate(proposals):
-    header_bg = "linear-gradient(to right, #f59e0b, #fbbf24)" if idx == 0 else "#64748b" if idx == 1 else "#9a3412"
-    border_col = "#fbbf24" if idx == 0 else "#cbd5e1" if idx == 1 else "#fcd34d"
-    simulated_badge = f'<span style="background:#ffedd5;color:#ea580c;padding:2px 4px;border-radius:4px;font-size:10px;font-weight:bold;margin-bottom:4px;display:inline-block;">※CSV未登録(概算)</span>' if p["isSimulated"] else ""
+# --- タブ1: 接客画面 ---
+with tab1:
+    st.subheader("📊 診断結果レポート")
+    for a in alerts:
+        if a["type"] == "danger": st.error(f"🚨 **{a.get('title', '危険')}:** {a['text']}")
+        elif a["type"] == "warning": st.warning(f"⚠️ **注意:** {a['text']}")
+        elif a["type"] == "success": st.success(f"✅ **{a['text']}**")
+        else: st.info(f"ℹ️ **{a.get('title', '予測')}:** {a['text']}")
     
-    # Markdownの誤判定を防ぐため、改行やインデントを一切含まない1行の文字列として連結
-    card_html = f'<div style="border: 2px solid {border_col}; border-radius: 12px; overflow: hidden; font-family: sans-serif; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; height: 100%;">'
-    card_html += f'<div style="background: {header_bg}; color: white; text-align: center; font-weight: bold; padding: 6px; font-size: 14px;">提案 {idx + 1} （{p["rank"]}クラス）</div>'
-    card_html += f'<div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: center; padding: 4px; font-size: 11px; font-weight: bold; color: {p["aiAdvice"]["color"]};">AI判定: {p["aiAdvice"]["text"]}</div>'
-    card_html += f'<div style="padding: 16px; display: flex; flex-direction: column; flex: 1;">'
-    card_html += f'<div style="font-size: 11px; color: #64748b; font-weight: bold;">{p["maker"]}</div>'
-    card_html += f'<div style="font-size: 18px; font-weight: 900; color: #0f172a; margin-bottom: 8px; min-height: 44px; display: flex; align-items: flex-start;">{p["name"]}</div>'
-    card_html += f'<div style="font-size: 12px; color: #334155; background: #f8fafc; padding: 8px; border-radius: 6px; min-height: 50px; margin-bottom: 12px; line-height: 1.4;">{p["desc"]}</div>'
-    card_html += f'<div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">'
-    card_html += get_progress_bar_html('安全性', p['safety'])
-    card_html += get_progress_bar_html('快適性', p['comfort'])
-    card_html += get_progress_bar_html('雨の日', p['wet'])
-    card_html += get_progress_bar_html('燃費・寿命', p['eco'])
-    card_html += f'</div>'
-    card_html += f'<div style="margin-top: auto;">'
-    card_html += f'<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px;">'
-    card_html += f'<span style="font-size: 11px; color: #64748b; font-weight: bold;">交換費用総額</span>'
-    card_html += f'<div style="text-align: right;">{simulated_badge}<br/><span style="font-size: 24px; font-weight: 900; color: #0f172a; line-height: 1;">¥{p["price"]:,}</span></div>'
-    card_html += f'</div>'
-    card_html += f'<div style="background: #eff6ff; padding: 10px; border-radius: 8px; border: 1px solid #dbeafe;">'
-    card_html += f'<div style="font-size: 11px; color: #1e40af; font-weight: bold; margin-bottom: 6px;">約 {p["lifeMonths"] // 12}年{p["lifeMonths"] % 12}ヶ月使用可能予測</div>'
-    card_html += f'<div style="background: white; padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #bfdbfe;">'
-    card_html += f'<span style="font-size: 10px; font-weight: bold; color: #1e3a8a;">ひと月あたり</span>'
-    card_html += f'<span style="font-size: 18px; font-weight: 900; color: #2563eb;">¥{p["costPerMonth"]:,}</span>'
-    card_html += f'</div></div></div></div></div>'
-    
-    # 割り当てられたカラム内にHTMLを描画
-    with cols[idx]:
-        st.markdown(card_html, unsafe_allow_html=True)
+    st.divider()
+    st.subheader(f"💡 【{current_size_str}】 最適タイヤ推奨プラン (4本コミコミ)")
 
-st.write("")
-st.caption("ご案内： 上記の月額コストは、お客様の走行距離をもとにタイヤが法定限界（1.6mm）に達するまでの予測使用期間で算出した参考値です。")
-st.markdown("---\n**🖨️ 印刷について:** ブラウザの印刷機能（`Ctrl+P` または `Cmd+P`）を利用してください。設定で「背景のグラフィックを印刷する」にチェックを入れ、「A4・横・余白なし」に設定すると綺麗に印刷できます。")
+    def get_pbar_html(label, value):
+        pct = (value / 5) * 100
+        return f'<div style="display: flex; align-items: center; font-size: 11px; margin-bottom: 4px;"><span style="width: 60px; color: #475569; font-weight: bold;">{label}</span><div style="flex: 1; background-color: #e2e8f0; height: 6px; border-radius: 999px; overflow: hidden; margin: 0 8px;"><div style="background-color: #2563eb; height: 100%; width: {pct}%;"></div></div><span style="width: 15px; text-align: right; color: #334155; font-weight: bold;">{value}</span></div>'
+
+    cols = st.columns(len(proposals))
+    for idx, p in enumerate(proposals):
+        h_bg = "linear-gradient(to right, #f59e0b, #fbbf24)" if idx == 0 else "#64748b" if idx == 1 else "#9a3412"
+        b_col = "#fbbf24" if idx == 0 else "#cbd5e1" if idx == 1 else "#fcd34d"
+        sim_badge = f'<span style="background:#ffedd5;color:#ea580c;padding:2px 4px;border-radius:4px;font-size:10px;font-weight:bold;margin-bottom:4px;display:inline-block;">※CSV未登録(概算)</span>' if p["isSimulated"] else ""
+        
+        c_html = f'<div style="border: 2px solid {b_col}; border-radius: 12px; overflow: hidden; font-family: sans-serif; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 100%;">'
+        c_html += f'<div style="background: {h_bg}; color: white; text-align: center; font-weight: bold; padding: 6px; font-size: 14px;">提案 {idx + 1} （{p["rank"]}クラス）</div>'
+        c_html += f'<div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: center; padding: 4px; font-size: 11px; font-weight: bold; color: {p["aiAdvice"]["color"]};">AI判定: {p["aiAdvice"]["text"]}</div>'
+        c_html += f'<div style="padding: 16px; display: flex; flex-direction: column; flex: 1;">'
+        c_html += f'<div style="font-size: 11px; color: #64748b; font-weight: bold;">{p["maker"]}</div>'
+        c_html += f'<div style="font-size: 18px; font-weight: 900; color: #0f172a; margin-bottom: 8px; min-height: 44px; display: flex; align-items: flex-start;">{p["name"]}</div>'
+        c_html += f'<div style="font-size: 12px; color: #334155; background: #f8fafc; padding: 8px; border-radius: 6px; min-height: 50px; margin-bottom: 12px; line-height: 1.4;">{p["desc"]}</div>'
+        c_html += f'<div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">'
+        c_html += get_pbar_html('安全性', p['safety']) + get_pbar_html('快適性', p['comfort']) + get_pbar_html('雨の日', p['wet']) + get_pbar_html('燃費・寿命', p['eco'])
+        c_html += f'</div><div style="margin-top: auto;">'
+        c_html += f'<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px;">'
+        c_html += f'<span style="font-size: 11px; color: #64748b; font-weight: bold;">交換費用総額</span>'
+        c_html += f'<div style="text-align: right;">{sim_badge}<br/><span style="font-size: 24px; font-weight: 900; color: #0f172a; line-height: 1;">¥{p["price"]:,}</span></div></div>'
+        c_html += f'<div style="background: #eff6ff; padding: 10px; border-radius: 8px; border: 1px solid #dbeafe;">'
+        c_html += f'<div style="font-size: 11px; color: #1e40af; font-weight: bold; margin-bottom: 6px;">約 {p["lifeMonths"] // 12}年{p["lifeMonths"] % 12}ヶ月使用可能予測</div>'
+        c_html += f'<div style="background: white; padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #bfdbfe;">'
+        c_html += f'<span style="font-size: 10px; font-weight: bold; color: #1e3a8a;">ひと月あたり</span>'
+        c_html += f'<span style="font-size: 18px; font-weight: 900; color: #2563eb;">¥{p["costPerMonth"]:,}</span>'
+        c_html += f'</div></div></div></div></div>'
+        with cols[idx]: st.markdown(c_html, unsafe_allow_html=True)
+
+
+# --- タブ2: PDF生成・印刷用 ---
+with tab2:
+    st.info("💡 下のボタンを押すと、この内容をA4横サイズのPDFとしてダウンロードできます。ダウンロード後に印刷してください。")
+    
+    # 印刷用HTMLの組み立て
+    name_disp = f"{customer_name} 様" if customer_name else "　　　　　　　　様"
+    car_disp = car_model if car_model else "未入力"
+    today_str = datetime.date.today().strftime("%Y年%m月%d日")
+    
+    # アラート部分生成
+    pdf_alerts_html = ""
+    for a in alerts:
+        bg = "#fef2f2" if a["type"] == "danger" else "#fffbeb" if a["type"] == "warning" else "#f0fdf4" if a["type"] == "success" else "#eff6ff"
+        col = "#991b1b" if a["type"] == "danger" else "#92400e" if a["type"] == "warning" else "#166534" if a["type"] == "success" else "#1e40af"
+        icon = "🚨" if a["type"] == "danger" else "⚠️" if a["type"] == "warning" else "✅" if a["type"] == "success" else "ℹ️"
+        title_str = f"<strong>{a.get('title', '')}</strong><br/>" if a.get('title') else ""
+        pdf_alerts_html += f'<div style="background-color: {bg}; color: {col}; padding: 8px 10px; border-radius: 6px; margin-bottom: 8px; font-size: 12px; line-height: 1.4;">{icon} {title_str}{a["text"]}</div>'
+
+    # 提案カード部分生成
+    pdf_cards_html = ""
+    for idx, p in enumerate(proposals):
+        h_bg = "linear-gradient(to right, #f59e0b, #fbbf24)" if idx == 0 else "#64748b" if idx == 1 else "#9a3412"
+        b_col = "#fbbf24" if idx == 0 else "#cbd5e1" if idx == 1 else "#fcd34d"
+        sim_badge = f'<span style="background:#ffedd5;color:#ea580c;padding:2px 4px;border-radius:4px;font-size:10px;font-weight:bold;margin-bottom:2px;display:inline-block;">※概算</span>' if p["isSimulated"] else ""
+        
+        def pdf_pbar(label, val):
+            pct = (val / 5) * 100
+            return f'<div style="display: flex; align-items: center; font-size: 10px; margin-bottom: 4px;"><span style="width: 45px; color: #475569; font-weight: bold;">{label}</span><div style="flex: 1; background-color: #e2e8f0; height: 5px; border-radius: 999px; overflow: hidden; margin: 0 6px;"><div style="background-color: #2563eb; height: 100%; width: {pct}%;"></div></div><span style="width: 15px; text-align: right; color: #334155; font-weight: bold;">{val}</span></div>'
+            
+        pdf_cards_html += f"""
+        <div style="flex: 1; border: 2px solid {b_col}; border-radius: 10px; overflow: hidden; background: white; display: flex; flex-direction: column; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+            <div style="background: {h_bg}; color: white; text-align: center; font-weight: bold; padding: 6px; font-size: 12px;">提案 {idx + 1} （{p['rank']}クラス）</div>
+            <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: center; padding: 4px; font-size: 10px; font-weight: bold; color: {p['aiAdvice']['color']};">AI判定: {p['aiAdvice']['text']}</div>
+            <div style="padding: 10px; display: flex; flex-direction: column; flex: 1;">
+                <div style="font-size: 10px; color: #64748b; font-weight: bold;">{p['maker']}</div>
+                <div style="font-size: 16px; font-weight: 900; color: #0f172a; margin-bottom: 6px; min-height: 38px; line-height: 1.2;">{p['name']}</div>
+                <div style="font-size: 10px; color: #334155; background: #f8fafc; padding: 6px; border-radius: 6px; min-height: 40px; margin-bottom: 8px;">{p['desc']}</div>
+                <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 8px;">
+                    {pdf_pbar('安全性', p['safety'])}
+                    {pdf_pbar('快適性', p['comfort'])}
+                    {pdf_pbar('雨の日', p['wet'])}
+                    {pdf_pbar('燃費・寿命', p['eco'])}
+                </div>
+                <div style="margin-top: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 6px;">
+                        <span style="font-size: 10px; color: #64748b; font-weight: bold;">交換費用総額 (4本)</span>
+                        <div style="text-align: right; line-height: 1.1;">{sim_badge}<br/><span style="font-size: 20px; font-weight: 900; color: #0f172a;">¥{p['price']:,}</span></div>
+                    </div>
+                    <div style="background: #eff6ff; padding: 6px; border-radius: 6px; border: 1px solid #dbeafe;">
+                        <div style="font-size: 10px; color: #1e40af; font-weight: bold; margin-bottom: 4px;">約 {p['lifeMonths'] // 12}年{p['lifeMonths'] % 12}ヶ月使用可能予測</div>
+                        <div style="background: white; padding: 4px 6px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #bfdbfe;">
+                            <span style="font-size: 9px; font-weight: bold; color: #1e3a8a;">ひと月あたり</span>
+                            <span style="font-size: 14px; font-weight: 900; color: #2563eb;">¥{p['costPerMonth']:,}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+    # 全体のHTML（ボタン＋A4サイズのプレビュー枠）
+    pdf_template = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="UTF-8">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body {{ font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; margin: 0; padding: 0; background: #f1f5f9; }}
+        .btn-container {{ text-align: center; padding: 15px; background: white; border-bottom: 1px solid #cbd5e1; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+        .download-btn {{ background: #2563eb; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s; }}
+        .download-btn:hover {{ background: #1d4ed8; transform: translateY(-1px); }}
+        
+        #pdf-wrapper {{ display: flex; justify-content: center; padding-bottom: 40px; }}
+        #pdf-content {{
+            width: 297mm;
+            height: 210mm; /* A4 landscape */
+            background: white;
+            padding: 12mm 15mm;
+            box-sizing: border-box;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            position: relative;
+        }}
+        .header {{ display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1e293b; padding-bottom: 10px; margin-bottom: 15px; }}
+        .customer-info {{ font-size: 26px; font-weight: bold; color: #0f172a; border-bottom: 1px dashed #94a3b8; min-width: 250px; display: inline-block; padding-bottom: 4px; margin-right: 20px; }}
+        .car-info {{ font-size: 16px; color: #475569; font-weight: bold; }}
+        .meta-info {{ text-align: right; font-size: 13px; color: #64748b; line-height: 1.4; }}
+        
+        .main-content {{ display: flex; gap: 15px; height: calc(100% - 80px); }}
+        .left-col {{ width: 28%; display: flex; flex-direction: column; gap: 10px; }}
+        .right-col {{ width: 72%; display: flex; gap: 12px; }}
+        
+        .section-title {{ font-size: 14px; font-weight: bold; color: #1e293b; margin-bottom: 10px; border-left: 4px solid #3b82f6; padding-left: 8px; }}
+        .diag-box {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; flex: 1; }}
+        .footer-note {{ font-size: 9px; color: #94a3b8; margin-top: auto; line-height: 1.4; }}
+        .shop-name {{ text-align: right; font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 10px; }}
+    </style>
+    </head>
+    <body>
+        <div class="btn-container">
+            <button class="download-btn" id="dl-btn">🖨️ この提案書をPDFでダウンロード (A4横サイズ)</button>
+        </div>
+        
+        <div id="pdf-wrapper">
+            <div id="pdf-content">
+                <div class="header">
+                    <div>
+                        <span class="customer-info">{name_disp}</span>
+                        <span class="car-info">車種: {car_disp}</span>
+                    </div>
+                    <div class="meta-info">
+                        発行日: {today_str}<br/>
+                        対象サイズ: <strong style="color:#0f172a; font-size:16px;">{current_size_str}</strong>
+                    </div>
+                </div>
+                
+                <div class="main-content">
+                    <div class="left-col">
+                        <div class="diag-box">
+                            <div class="section-title">📊 タイヤ健康診断レポート</div>
+                            {pdf_alerts_html}
+                        </div>
+                        <div style="flex: 1;"></div>
+                        <div class="footer-note">
+                            ※月額コストは、お客様の申告走行距離をもとに、タイヤが法定限界(1.6mm)に達するまでの予測使用期間で算出した参考値です。<br/>
+                            ※実際の寿命は使用環境や空気圧管理等により変動します。
+                        </div>
+                        <div class="shop-name">Tire-Navi 2026</div>
+                    </div>
+                    
+                    <div class="right-col">
+                        {pdf_cards_html}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            document.getElementById('dl-btn').addEventListener('click', function() {{
+                var element = document.getElementById('pdf-content');
+                var opt = {{
+                  margin:       0,
+                  filename:     'タイヤ提案書_{customer_name}.pdf',
+                  image:        {{ type: 'jpeg', quality: 1.0 }},
+                  html2canvas:  {{ scale: 2, useCORS: true }},
+                  jsPDF:        {{ unit: 'mm', format: 'a4', orientation: 'landscape' }}
+                }};
+                
+                var btn = this;
+                var originalText = btn.innerHTML;
+                btn.innerHTML = '⏳ PDFを生成しています...';
+                btn.disabled = true;
+                btn.style.background = '#94a3b8';
+                
+                html2pdf().set(opt).from(element).save().then(function() {{
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    btn.style.background = '#2563eb';
+                }});
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    
+    # components.htmlでプレビュー画面を描画（高さはA4横サイズに合わせて余裕を持たせる）
+    components.html(pdf_template, height=950, scrolling=True)
