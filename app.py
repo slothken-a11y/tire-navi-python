@@ -438,8 +438,8 @@ final_html = f"""
 </div>
 """
 
-# st.markdownのunsafe_allow_htmlを使いつつ、確実に描画される形で出力
-st.write(final_html, unsafe_allow_html=True)
+# st.writeではなくst.markdownを使用してHTMLを正しくレンダリングする
+st.markdown(final_html, unsafe_allow_html=True)
 
 st.caption("ご案内： 上記の月額コストは、お客様の走行距離をもとにタイヤが法定限界（1.6mm）に達するまでの予測使用期間で算出した参考値です。")
 st.markdown("---\n**🖨️ 印刷について:** ブラウザの印刷機能（`Ctrl+P` または `Cmd+P`）を利用してください。設定で「背景のグラフィックを印刷する」にチェックを入れ、「A4・横・余白なし」に設定すると綺麗に印刷できます。")
