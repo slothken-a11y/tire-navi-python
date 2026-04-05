@@ -245,7 +245,8 @@ with col1:
 with col2:
     st.subheader("3. 現着タイヤ状態")
     rank_options = {"プレミアム (松)": "松", "スタンダード (竹)": "竹", "ローコスト (梅)": "梅"}
-    current_tire_rank = rank_options[st.selectbox("現在装着されているタイヤのグレード", list(rank_options.keys()), index=1)]
+    current_tire_rank_label = st.selectbox("現在装着されているタイヤのグレード", list(rank_options.keys()), index=1)
+    current_tire_rank = rank_options[current_tire_rank_label]
     tread_depth = st.slider("最も少ない残溝 (mm)", 0.0, 8.0, 3.0, 0.1)
     years_old = st.slider("使用年数 (製造年から)", 1, 10, 4, 1)
     chk_col1, chk_col2 = st.columns(2)
@@ -262,7 +263,7 @@ is_tread_warning = tread_depth <= 3.5
 is_tread_danger = tread_depth <= 1.6
 remaining_life_months = max(0, math.floor(((tread_depth - 1.6) * 5000) / monthly_km)) if tread_depth > 1.6 else 0
 
-# 診断結果をデータとしてまとめる（画面表示＆PDF用）
+# 診断結果をデータとしてまとめる
 alerts = []
 if is_tread_danger:
     alerts.append({"type": "danger", "title": "車検NG 限界到達", "text": "法律で定められた限界(1.6mm)に達しています。直ちに交換が必要です。"})
@@ -364,12 +365,15 @@ with tab1:
 
 # --- タブ2: PDF生成・印刷用 ---
 with tab2:
-    st.info("💡 下のボタンを押すと、この内容をA4横サイズのPDFとしてダウンロードできます。ダウンロード後に印刷してください。")
+    st.info("💡 下のボタンを押すと、この内容をA4横サイズのPDFとしてダウンロードできます。")
     
-    # 印刷用HTMLの組み立て
+    # PDF印刷用の変数準備
     name_disp = f"{customer_name} 様" if customer_name else "　　　　　　　　様"
     car_disp = car_model if car_model else "未入力"
     today_str = datetime.date.today().strftime("%Y年%m月%d日")
+    
+    cracks_disp = "あり" if has_cracks else "なし"
+    wear_disp = "あり" if has_uneven_wear else "なし"
     
     # アラート部分生成
     pdf_alerts_html = ""
@@ -378,7 +382,7 @@ with tab2:
         col = "#991b1b" if a["type"] == "danger" else "#92400e" if a["type"] == "warning" else "#166534" if a["type"] == "success" else "#1e40af"
         icon = "🚨" if a["type"] == "danger" else "⚠️" if a["type"] == "warning" else "✅" if a["type"] == "success" else "ℹ️"
         title_str = f"<strong>{a.get('title', '')}</strong><br/>" if a.get('title') else ""
-        pdf_alerts_html += f'<div style="background-color: {bg}; color: {col}; padding: 8px 10px; border-radius: 6px; margin-bottom: 8px; font-size: 12px; line-height: 1.4;">{icon} {title_str}{a["text"]}</div>'
+        pdf_alerts_html += f'<div style="background-color: {bg}; color: {col}; padding: 6px 8px; border-radius: 6px; margin-bottom: 6px; font-size: 10px; line-height: 1.4;">{icon} {title_str}{a["text"]}</div>'
 
     # 提案カード部分生成
     pdf_cards_html = ""
@@ -438,24 +442,32 @@ with tab2:
         #pdf-wrapper {{ display: flex; justify-content: center; padding-bottom: 40px; }}
         #pdf-content {{
             width: 297mm;
-            height: 210mm; /* A4 landscape */
+            height: 210mm;
             background: white;
             padding: 12mm 15mm;
             box-sizing: border-box;
             box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
             position: relative;
         }}
-        .header {{ display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1e293b; padding-bottom: 10px; margin-bottom: 15px; }}
-        .customer-info {{ font-size: 26px; font-weight: bold; color: #0f172a; border-bottom: 1px dashed #94a3b8; min-width: 250px; display: inline-block; padding-bottom: 4px; margin-right: 20px; }}
-        .car-info {{ font-size: 16px; color: #475569; font-weight: bold; }}
+        
+        .header {{ display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #1e293b; padding-bottom: 8px; margin-bottom: 15px; }}
+        .customer-info {{ font-size: 26px; font-weight: bold; color: #0f172a; border-bottom: 1px dashed #94a3b8; min-width: 300px; display: inline-block; padding-bottom: 4px; margin-right: 20px; }}
         .meta-info {{ text-align: right; font-size: 13px; color: #64748b; line-height: 1.4; }}
         
-        .main-content {{ display: flex; gap: 15px; height: calc(100% - 80px); }}
-        .left-col {{ width: 28%; display: flex; flex-direction: column; gap: 10px; }}
+        .main-content {{ display: flex; gap: 15px; height: calc(100% - 70px); }}
+        .left-col {{ width: 28%; display: flex; flex-direction: column; gap: 12px; }}
         .right-col {{ width: 72%; display: flex; gap: 12px; }}
         
-        .section-title {{ font-size: 14px; font-weight: bold; color: #1e293b; margin-bottom: 10px; border-left: 4px solid #3b82f6; padding-left: 8px; }}
-        .diag-box {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; flex: 1; }}
+        /* 情報ボックス（車両・タイヤ状態用） */
+        .info-box {{ background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }}
+        .info-title {{ font-size: 12px; font-weight: bold; color: #1e293b; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }}
+        .info-table {{ width: 100%; font-size: 11px; color: #334155; border-collapse: collapse; }}
+        .info-table td {{ padding: 3px 0; }}
+        .info-table td:first-child {{ color: #64748b; }}
+        .info-table td:last-child {{ text-align: right; font-weight: bold; color: #0f172a; }}
+
+        .section-title {{ font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 8px; border-left: 4px solid #3b82f6; padding-left: 6px; }}
+        .diag-box {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; }}
         .footer-note {{ font-size: 9px; color: #94a3b8; margin-top: auto; line-height: 1.4; }}
         .shop-name {{ text-align: right; font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 10px; }}
     </style>
@@ -467,31 +479,51 @@ with tab2:
         
         <div id="pdf-wrapper">
             <div id="pdf-content">
+                <!-- ヘッダー -->
                 <div class="header">
-                    <div>
-                        <span class="customer-info">{name_disp}</span>
-                        <span class="car-info">車種: {car_disp}</span>
-                    </div>
+                    <div class="customer-info">{name_disp}</div>
                     <div class="meta-info">
-                        発行日: {today_str}<br/>
-                        対象サイズ: <strong style="color:#0f172a; font-size:16px;">{current_size_str}</strong>
+                        発行日: {today_str}
                     </div>
                 </div>
                 
                 <div class="main-content">
+                    <!-- 左カラム (車両情報・タイヤ状態・診断) -->
                     <div class="left-col">
+                        <div class="info-box">
+                            <div class="info-title">🚗 お客様車両情報</div>
+                            <table class="info-table">
+                                <tr><td>車種</td><td>{car_disp}</td></tr>
+                                <tr><td>カテゴリ</td><td>{category}</td></tr>
+                                <tr><td>サイズ</td><td>{current_size_str}</td></tr>
+                                <tr><td>月間走行</td><td>{monthly_km:,} km</td></tr>
+                            </table>
+                        </div>
+                        
+                        <div class="info-box">
+                            <div class="info-title">🔍 現着タイヤ状態</div>
+                            <table class="info-table">
+                                <tr><td>グレード</td><td>{current_tire_rank_label}</td></tr>
+                                <tr><td>残溝</td><td>{tread_depth:.1f} mm</td></tr>
+                                <tr><td>使用年数</td><td>{years_old} 年</td></tr>
+                                <tr><td>劣化/偏摩耗</td><td>{cracks_disp} / {wear_disp}</td></tr>
+                            </table>
+                        </div>
+
                         <div class="diag-box">
                             <div class="section-title">📊 タイヤ健康診断レポート</div>
                             {pdf_alerts_html}
                         </div>
+                        
                         <div style="flex: 1;"></div>
                         <div class="footer-note">
-                            ※月額コストは、お客様の申告走行距離をもとに、タイヤが法定限界(1.6mm)に達するまでの予測使用期間で算出した参考値です。<br/>
+                            ※月額コストは、申告走行距離をもとに、タイヤが法定限界(1.6mm)に達するまでの予測期間で算出した参考値です。<br/>
                             ※実際の寿命は使用環境や空気圧管理等により変動します。
                         </div>
                         <div class="shop-name">Tire-Navi 2026</div>
                     </div>
                     
+                    <!-- 右カラム (提案カード) -->
                     <div class="right-col">
                         {pdf_cards_html}
                     </div>
@@ -527,5 +559,4 @@ with tab2:
     </html>
     """
     
-    # components.htmlでプレビュー画面を描画（高さはA4横サイズに合わせて余裕を持たせる）
     components.html(pdf_template, height=950, scrolling=True)
