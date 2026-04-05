@@ -15,6 +15,10 @@ st.markdown("""
     h1, h2, h3 { color: #1e293b; font-weight: 800; }
     .stSelectbox label, .stSlider label, .stCheckbox label, .stRadio label { font-weight: bold; color: #334155; }
     hr { margin-top: 1.5rem; margin-bottom: 1.5rem; }
+    
+    /* カードの高さを揃えるためのCSS */
+    [data-testid="column"] { display: flex; flex-direction: column; }
+    [data-testid="column"] > div { flex: 1; display: flex; flex-direction: column; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -91,7 +95,6 @@ INCH_OPTIONS = [12 + i for i in range(11)]
 # 🔄 Google Drive CSV ローダー
 # =========================================================================
 def get_gdrive_direct_url(url):
-    """Google Driveの共有リンクを直接ダウンロード可能なURLに変換する"""
     file_id = ""
     match1 = re.search(r"/file/d/([^/]+)/", url)
     match2 = re.search(r"/d/([^/]+)/", url)
@@ -107,7 +110,7 @@ def get_gdrive_direct_url(url):
         return f"https://drive.google.com/uc?export=download&id={file_id}"
     return url
 
-@st.cache_data(ttl=3600) # 1時間キャッシュ
+@st.cache_data(ttl=3600)
 def load_csv_data(gdrive_url):
     try:
         direct_url = get_gdrive_direct_url(gdrive_url)
@@ -142,11 +145,9 @@ def get_price_data(df, is_loaded, brand, width, profile, inch):
         
         for _, row in df.iterrows():
             try:
-                # ユーザーのCSV形式に合わせた列名チェック
                 csv_w = int(float(row.get("width", row.get("幅", 0))))
                 csv_p = int(float(row.get("profile", row.get("扁平率", 0))))
                 csv_i = int(float(row.get("inch", row.get("インチ", 0))))
-                
                 if csv_w != width or csv_p != profile or csv_i != inch:
                     continue
             except: continue
@@ -161,7 +162,6 @@ def get_price_data(df, is_loaded, brand, width, profile, inch):
                     break
 
     if exact_hit is not None:
-        # ユーザーのCSV（price_tier1_4unitsなど）または日本語カラム（4本コミコミ価格など）に対応
         def get_val(keys):
             for k in keys:
                 if k in exact_hit and str(exact_hit[k]).replace('.0','').isdigit():
@@ -173,12 +173,8 @@ def get_price_data(df, is_loaded, brand, width, profile, inch):
         mgr = get_val(["price_manager_4units", "最終原価"])
         actual_name = exact_hit.get("product_name", exact_hit.get("商品名", brand["name"]))
 
-        return {
-            "tier1": t1, "tier2": t2, "manager": mgr,
-            "actualName": actual_name, "isSimulated": False
-        }
+        return {"tier1": t1, "tier2": t2, "manager": mgr, "actualName": actual_name, "isSimulated": False}
     
-    # 見つからない場合のシミュレーション
     base = inch * inch * 130
     rank = brand["rank"]
     if rank == '松': t1, t2, mgr = base * 2.2, base * 2.0, base * 1.8
@@ -186,11 +182,8 @@ def get_price_data(df, is_loaded, brand, width, profile, inch):
     else: t1, t2, mgr = base * 1.2, base * 1.1, base * 1.0
 
     return {
-        "tier1": round(t1 / 1000) * 1000,
-        "tier2": round(t2 / 1000) * 1000,
-        "manager": round(mgr / 1000) * 1000,
-        "actualName": brand["name"],
-        "isSimulated": True
+        "tier1": round(t1 / 1000) * 1000, "tier2": round(t2 / 1000) * 1000, "manager": round(mgr / 1000) * 1000,
+        "actualName": brand["name"], "isSimulated": True
     }
 
 def get_ai_recommendation(current_rank, proposed_rank, idx):
@@ -212,39 +205,31 @@ def get_ai_recommendation(current_rank, proposed_rank, idx):
 # 🎨 UI / メイン画面
 # =========================================================================
 
-# サイドバー設定
 with st.sidebar:
     st.title("⚙️ システム設定")
-    
     st.subheader("Google Drive マスター連携")
     default_gdrive_url = "https://drive.google.com/file/d/1mY0iZIlqOl3dfuLXi5bxzWCkOJnkg99a/view?usp=sharing"
     gdrive_url = st.text_input("CSV共有リンクURL", value=default_gdrive_url)
     
-    # 接続確認
     df_master = pd.DataFrame()
     is_csv_loaded = False
     
     if gdrive_url:
         with st.spinner("マスターデータを読み込み中..."):
             df_master, is_csv_loaded, err_msg = load_csv_data(gdrive_url)
-        
         if is_csv_loaded:
             st.success(f"接続完了（{len(df_master)}件）")
         else:
             st.error(f"読込エラー: {err_msg}")
             
     st.divider()
-    
     st.subheader("表示モード")
     price_mode_options = {"店頭表示": "tier1", "接客提案": "tier2", "店長決裁": "manager"}
     selected_mode_label = st.radio("価格モード切替", list(price_mode_options.keys()))
     price_mode = price_mode_options[selected_mode_label]
 
-
-# メインヘッダー
 st.title("🚗 Tire-Navi 2026")
 
-# --- 入力エリア ---
 col1, col2 = st.columns([1, 1])
 
 with col1:
@@ -285,7 +270,6 @@ with col2:
 
 st.divider()
 
-# --- 計算・診断ロジック ---
 current_size_str = f"{tire_width}/{tire_profile}R{tire_inch}"
 is_tread_warning = tread_depth <= 3.5
 is_tread_danger = tread_depth <= 1.6
@@ -294,7 +278,6 @@ remaining_life_months = 0
 if tread_depth > 1.6:
     remaining_life_months = max(0, math.floor(((tread_depth - 1.6) * 5000) / monthly_km))
 
-# --- 診断結果表示 ---
 st.subheader("📊 診断結果レポート")
 diag_col1, diag_col2 = st.columns([1, 2])
 
@@ -322,7 +305,6 @@ with diag_col2:
 
 st.divider()
 
-# --- 提案ロジックの実行 ---
 all_brands = BRAND_MASTER.get(category, [])
 matsus = [b for b in all_brands if b["rank"] == '松']
 takes = [b for b in all_brands if b["rank"] == '竹']
@@ -364,82 +346,52 @@ for idx, brand in enumerate(valid_brands):
         "aiAdvice": ai_advice
     })
 
-# --- 提案表示UI（1つのHTMLブロックにまとめて描画） ---
+# --- 提案表示UI（Streamlitのカラム機能を利用して安全に描画） ---
 st.subheader(f"💡 【{current_size_str}】 最適タイヤ推奨プラン (4本コミコミ)")
 
-# プログレスバー生成用のヘルパー関数
+# インデントを持たないワンライナー文字列としてHTMLを返すヘルパー関数
 def get_progress_bar_html(label, value):
     pct = (value / 5) * 100
-    return f"""
-    <div style="display: flex; align-items: center; font-size: 11px; margin-bottom: 4px;">
-        <span style="width: 60px; color: #475569; font-weight: bold;">{label}</span>
-        <div style="flex: 1; background-color: #e2e8f0; height: 6px; border-radius: 9999px; overflow: hidden; margin: 0 8px;">
-            <div style="background-color: #2563eb; height: 100%; width: {pct}%;"></div>
-        </div>
-        <span style="width: 15px; text-align: right; color: #334155; font-weight: bold;">{value}</span>
-    </div>
-    """
+    return f'<div style="display: flex; align-items: center; font-size: 11px; margin-bottom: 4px;"><span style="width: 60px; color: #475569; font-weight: bold;">{label}</span><div style="flex: 1; background-color: #e2e8f0; height: 6px; border-radius: 9999px; overflow: hidden; margin: 0 8px;"><div style="background-color: #2563eb; height: 100%; width: {pct}%;"></div></div><span style="width: 15px; text-align: right; color: #334155; font-weight: bold;">{value}</span></div>'
 
-cards_html = ""
+# Streamlitの標準機能で横に3つ並べる
+cols = st.columns(len(proposals))
+
 for idx, p in enumerate(proposals):
     header_bg = "linear-gradient(to right, #f59e0b, #fbbf24)" if idx == 0 else "#64748b" if idx == 1 else "#9a3412"
     border_col = "#fbbf24" if idx == 0 else "#cbd5e1" if idx == 1 else "#fcd34d"
     simulated_badge = f'<span style="background:#ffedd5;color:#ea580c;padding:2px 4px;border-radius:4px;font-size:10px;font-weight:bold;margin-bottom:4px;display:inline-block;">※CSV未登録(概算)</span>' if p["isSimulated"] else ""
     
-    cards_html += f"""
-    <div style="flex: 1; min-width: 250px; border: 2px solid {border_col}; border-radius: 12px; overflow: hidden; font-family: sans-serif; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column;">
-        <div style="background: {header_bg}; color: white; text-align: center; font-weight: bold; padding: 6px; font-size: 14px;">
-            提案 {idx + 1} （{p['rank']}クラス）
-        </div>
-        <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: center; padding: 4px; font-size: 11px; font-weight: bold; color: {p['aiAdvice']['color']};">
-            AI判定: {p['aiAdvice']['text']}
-        </div>
-        <div style="padding: 16px; flex: 1; display: flex; flex-direction: column;">
-            <div style="font-size: 11px; color: #64748b; font-weight: bold;">{p['maker']}</div>
-            <div style="font-size: 18px; font-weight: 900; color: #0f172a; margin-bottom: 8px; min-height: 44px; display: flex; align-items: flex-start;">{p['name']}</div>
-            <div style="font-size: 12px; color: #334155; background: #f8fafc; padding: 8px; border-radius: 6px; min-height: 50px; margin-bottom: 12px; line-height: 1.4;">
-                {p['desc']}
-            </div>
-            
-            <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
-                {get_progress_bar_html('安全性', p['safety'])}
-                {get_progress_bar_html('快適性', p['comfort'])}
-                {get_progress_bar_html('雨の日', p['wet'])}
-                {get_progress_bar_html('燃費・寿命', p['eco'])}
-            </div>
-            
-            <div style="margin-top: auto;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px;">
-                    <span style="font-size: 11px; color: #64748b; font-weight: bold;">交換費用総額</span>
-                    <div style="text-align: right;">
-                        {simulated_badge}<br/>
-                        <span style="font-size: 24px; font-weight: 900; color: #0f172a; line-height: 1;">¥{p['price']:,}</span>
-                    </div>
-                </div>
-                
-                <div style="background: #eff6ff; padding: 10px; border-radius: 8px; border: 1px solid #dbeafe;">
-                    <div style="font-size: 11px; color: #1e40af; font-weight: bold; margin-bottom: 6px;">
-                        約 {p['lifeMonths'] // 12}年{p['lifeMonths'] % 12}ヶ月使用可能予測
-                    </div>
-                    <div style="background: white; padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #bfdbfe;">
-                        <span style="font-size: 10px; font-weight: bold; color: #1e3a8a;">ひと月あたり</span>
-                        <span style="font-size: 18px; font-weight: 900; color: #2563eb;">¥{p['costPerMonth']:,}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    """
+    # Markdownの誤判定を防ぐため、改行やインデントを一切含まない1行の文字列として連結
+    card_html = f'<div style="border: 2px solid {border_col}; border-radius: 12px; overflow: hidden; font-family: sans-serif; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; height: 100%;">'
+    card_html += f'<div style="background: {header_bg}; color: white; text-align: center; font-weight: bold; padding: 6px; font-size: 14px;">提案 {idx + 1} （{p["rank"]}クラス）</div>'
+    card_html += f'<div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: center; padding: 4px; font-size: 11px; font-weight: bold; color: {p["aiAdvice"]["color"]};">AI判定: {p["aiAdvice"]["text"]}</div>'
+    card_html += f'<div style="padding: 16px; display: flex; flex-direction: column; flex: 1;">'
+    card_html += f'<div style="font-size: 11px; color: #64748b; font-weight: bold;">{p["maker"]}</div>'
+    card_html += f'<div style="font-size: 18px; font-weight: 900; color: #0f172a; margin-bottom: 8px; min-height: 44px; display: flex; align-items: flex-start;">{p["name"]}</div>'
+    card_html += f'<div style="font-size: 12px; color: #334155; background: #f8fafc; padding: 8px; border-radius: 6px; min-height: 50px; margin-bottom: 12px; line-height: 1.4;">{p["desc"]}</div>'
+    card_html += f'<div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">'
+    card_html += get_progress_bar_html('安全性', p['safety'])
+    card_html += get_progress_bar_html('快適性', p['comfort'])
+    card_html += get_progress_bar_html('雨の日', p['wet'])
+    card_html += get_progress_bar_html('燃費・寿命', p['eco'])
+    card_html += f'</div>'
+    card_html += f'<div style="margin-top: auto;">'
+    card_html += f'<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px;">'
+    card_html += f'<span style="font-size: 11px; color: #64748b; font-weight: bold;">交換費用総額</span>'
+    card_html += f'<div style="text-align: right;">{simulated_badge}<br/><span style="font-size: 24px; font-weight: 900; color: #0f172a; line-height: 1;">¥{p["price"]:,}</span></div>'
+    card_html += f'</div>'
+    card_html += f'<div style="background: #eff6ff; padding: 10px; border-radius: 8px; border: 1px solid #dbeafe;">'
+    card_html += f'<div style="font-size: 11px; color: #1e40af; font-weight: bold; margin-bottom: 6px;">約 {p["lifeMonths"] // 12}年{p["lifeMonths"] % 12}ヶ月使用可能予測</div>'
+    card_html += f'<div style="background: white; padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #bfdbfe;">'
+    card_html += f'<span style="font-size: 10px; font-weight: bold; color: #1e3a8a;">ひと月あたり</span>'
+    card_html += f'<span style="font-size: 18px; font-weight: 900; color: #2563eb;">¥{p["costPerMonth"]:,}</span>'
+    card_html += f'</div></div></div></div></div>'
+    
+    # 割り当てられたカラム内にHTMLを描画
+    with cols[idx]:
+        st.markdown(card_html, unsafe_allow_html=True)
 
-# 3つのカードを横並びにするラッパー (Flexbox)
-final_html = f"""
-<div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
-    {cards_html}
-</div>
-"""
-
-# st.writeではなくst.markdownを使用してHTMLを正しくレンダリングする
-st.markdown(final_html, unsafe_allow_html=True)
-
+st.write("")
 st.caption("ご案内： 上記の月額コストは、お客様の走行距離をもとにタイヤが法定限界（1.6mm）に達するまでの予測使用期間で算出した参考値です。")
 st.markdown("---\n**🖨️ 印刷について:** ブラウザの印刷機能（`Ctrl+P` または `Cmd+P`）を利用してください。設定で「背景のグラフィックを印刷する」にチェックを入れ、「A4・横・余白なし」に設定すると綺麗に印刷できます。")
