@@ -8,6 +8,16 @@ import re
 # =========================================================================
 st.set_page_config(page_title="Tire-Navi 2026", page_icon="🚗", layout="wide")
 
+# カスタムCSSを注入して全体のデザインを調整
+st.markdown("""
+<style>
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    h1, h2, h3 { color: #1e293b; font-weight: 800; }
+    .stSelectbox label, .stSlider label, .stCheckbox label, .stRadio label { font-weight: bold; color: #334155; }
+    hr { margin-top: 1.5rem; margin-bottom: 1.5rem; }
+</style>
+""", unsafe_allow_html=True)
+
 # =========================================================================
 # 📊 マスターデータ定義 (内部の商品・性能マスタ)
 # =========================================================================
@@ -186,29 +196,17 @@ def get_price_data(df, is_loaded, brand, width, profile, inch):
 def get_ai_recommendation(current_rank, proposed_rank, idx):
     if current_rank == "松":
         if proposed_rank == "松": return {"text": "同等性能（最推奨）", "color": "#dc2626"} if idx == 0 else {"text": "同等性能（比較用）", "color": "#2563eb"}
-        if proposed_rank == "竹": return {"text": "性能ダウン注意", "color": "#f97316"}
-        if proposed_rank == "梅": return {"text": "不満リスク大", "color": "#64748b"}
+        if proposed_rank == "竹": return {"text": "性能ダウン注意", "color": "#ea580c"}
+        if proposed_rank == "梅": return {"text": "不満リスク大", "color": "#475569"}
     if current_rank == "竹":
         if proposed_rank == "松": return {"text": "性能アップ（快適）", "color": "#2563eb"}
         if proposed_rank == "竹": return {"text": "同等クラス（推奨）", "color": "#dc2626"} if idx == 1 else {"text": "同等クラス（標準）", "color": "#16a34a"}
-        if proposed_rank == "梅": return {"text": "性能ダウン注意", "color": "#f97316"}
+        if proposed_rank == "梅": return {"text": "性能ダウン注意", "color": "#ea580c"}
     if current_rank == "梅":
         if proposed_rank == "松": return {"text": "大幅性能アップ", "color": "#2563eb"}
         if proposed_rank == "竹": return {"text": "性能アップ（推奨）", "color": "#dc2626"}
-        if proposed_rank == "梅": return {"text": "同等クラス（上位）", "color": "#16a34a"} if idx == 0 else {"text": "同等クラス（標準）", "color": "#3b82f6"} if idx == 1 else {"text": "コスト最優先", "color": "#64748b"}
+        if proposed_rank == "梅": return {"text": "同等クラス（上位）", "color": "#16a34a"} if idx == 0 else {"text": "同等クラス（標準）", "color": "#3b82f6"} if idx == 1 else {"text": "コスト最優先", "color": "#475569"}
     return {"text": "おすすめ", "color": "#3b82f6"}
-
-def draw_progress_bar(label, value):
-    pct = (value / 5) * 100
-    return f"""
-    <div style="display: flex; align-items: center; font-size: 12px; margin-bottom: 4px;">
-        <span style="width: 60px; color: #475569; font-weight: bold;">{label}</span>
-        <div style="flex: 1; background-color: #e2e8f0; height: 6px; border-radius: 9999px; overflow: hidden; margin: 0 8px;">
-            <div style="background-color: #2563eb; height: 100%; width: {pct}%;"></div>
-        </div>
-        <span style="width: 15px; text-align: right; color: #334155; font-weight: bold;">{value}</span>
-    </div>
-    """
 
 # =========================================================================
 # 🎨 UI / メイン画面
@@ -219,7 +217,6 @@ with st.sidebar:
     st.title("⚙️ システム設定")
     
     st.subheader("Google Drive マスター連携")
-    # ✅ ご指定のURLをデフォルト値として設定しました
     default_gdrive_url = "https://drive.google.com/file/d/1mY0iZIlqOl3dfuLXi5bxzWCkOJnkg99a/view?usp=sharing"
     gdrive_url = st.text_input("CSV共有リンクURL", value=default_gdrive_url)
     
@@ -303,9 +300,9 @@ diag_col1, diag_col2 = st.columns([1, 2])
 
 with diag_col1:
     if is_tread_danger:
-        st.error(f"#### 車検NG 限界到達\n法律で定められた限界(1.6mm)に達しています。")
+        st.error(f"#### 🚨 車検NG 限界到達\n法律で定められた限界(1.6mm)に達しています。")
     else:
-        st.success(f"#### 車検NG(1.6mm)まで\n#### あと {remaining_life_months} ヶ月\n（走行換算: 約{remaining_life_months * monthly_km:,}km）")
+        st.success(f"#### 車検NG(1.6mm)まで あと {remaining_life_months} ヶ月\n（走行換算: 約{remaining_life_months * monthly_km:,}km）")
         if has_uneven_wear:
             st.caption("※偏摩耗があるため寿命を短く算定しています")
 
@@ -367,43 +364,56 @@ for idx, brand in enumerate(valid_brands):
         "aiAdvice": ai_advice
     })
 
-# --- 提案表示UI ---
+# --- 提案表示UI（1つのHTMLブロックにまとめて描画） ---
 st.subheader(f"💡 【{current_size_str}】 最適タイヤ推奨プラン (4本コミコミ)")
-cols = st.columns(3)
 
+# プログレスバー生成用のヘルパー関数
+def get_progress_bar_html(label, value):
+    pct = (value / 5) * 100
+    return f"""
+    <div style="display: flex; align-items: center; font-size: 11px; margin-bottom: 4px;">
+        <span style="width: 60px; color: #475569; font-weight: bold;">{label}</span>
+        <div style="flex: 1; background-color: #e2e8f0; height: 6px; border-radius: 9999px; overflow: hidden; margin: 0 8px;">
+            <div style="background-color: #2563eb; height: 100%; width: {pct}%;"></div>
+        </div>
+        <span style="width: 15px; text-align: right; color: #334155; font-weight: bold;">{value}</span>
+    </div>
+    """
+
+cards_html = ""
 for idx, p in enumerate(proposals):
-    with cols[idx]:
-        header_bg = "linear-gradient(to right, #f59e0b, #fbbf24)" if idx == 0 else "#475569" if idx == 1 else "#9a3412"
-        border_col = "#fbbf24" if idx == 0 else "#cbd5e1" if idx == 1 else "#fcd34d"
-        simulated_badge = f'<span style="background:#ffedd5;color:#f97316;padding:2px 4px;border-radius:4px;font-size:10px;font-weight:bold;">※CSV未登録(概算)</span>' if p["isSimulated"] else ""
-        
-        html = f"""
-        <div style="border: 2px solid {border_col}; border-radius: 12px; overflow: hidden; font-family: sans-serif; background: white; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-            <div style="background: {header_bg}; color: white; text-align: center; font-weight: bold; padding: 6px; font-size: 14px;">
-                提案 {idx + 1} （{p['rank']}クラス）
+    header_bg = "linear-gradient(to right, #f59e0b, #fbbf24)" if idx == 0 else "#64748b" if idx == 1 else "#9a3412"
+    border_col = "#fbbf24" if idx == 0 else "#cbd5e1" if idx == 1 else "#fcd34d"
+    simulated_badge = f'<span style="background:#ffedd5;color:#ea580c;padding:2px 4px;border-radius:4px;font-size:10px;font-weight:bold;margin-bottom:4px;display:inline-block;">※CSV未登録(概算)</span>' if p["isSimulated"] else ""
+    
+    cards_html += f"""
+    <div style="flex: 1; min-width: 250px; border: 2px solid {border_col}; border-radius: 12px; overflow: hidden; font-family: sans-serif; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column;">
+        <div style="background: {header_bg}; color: white; text-align: center; font-weight: bold; padding: 6px; font-size: 14px;">
+            提案 {idx + 1} （{p['rank']}クラス）
+        </div>
+        <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: center; padding: 4px; font-size: 11px; font-weight: bold; color: {p['aiAdvice']['color']};">
+            AI判定: {p['aiAdvice']['text']}
+        </div>
+        <div style="padding: 16px; flex: 1; display: flex; flex-direction: column;">
+            <div style="font-size: 11px; color: #64748b; font-weight: bold;">{p['maker']}</div>
+            <div style="font-size: 18px; font-weight: 900; color: #0f172a; margin-bottom: 8px; min-height: 44px; display: flex; align-items: flex-start;">{p['name']}</div>
+            <div style="font-size: 12px; color: #334155; background: #f8fafc; padding: 8px; border-radius: 6px; min-height: 50px; margin-bottom: 12px; line-height: 1.4;">
+                {p['desc']}
             </div>
-            <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: center; padding: 4px; font-size: 12px; font-weight: bold; color: {p['aiAdvice']['color']};">
-                AI判定: {p['aiAdvice']['text']}
+            
+            <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
+                {get_progress_bar_html('安全性', p['safety'])}
+                {get_progress_bar_html('快適性', p['comfort'])}
+                {get_progress_bar_html('雨の日', p['wet'])}
+                {get_progress_bar_html('燃費・寿命', p['eco'])}
             </div>
-            <div style="padding: 16px;">
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">{p['maker']}</div>
-                <div style="font-size: 18px; font-weight: 900; color: #0f172a; margin-bottom: 8px; min-height: 44px;">{p['name']}</div>
-                <div style="font-size: 12px; color: #334155; background: #f8fafc; padding: 8px; border-radius: 6px; min-height: 50px; margin-bottom: 12px;">
-                    {p['desc']}
-                </div>
-                
-                <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
-                    {draw_progress_bar('安全性', p['safety'])}
-                    {draw_progress_bar('快適性', p['comfort'])}
-                    {draw_progress_bar('雨の日', p['wet'])}
-                    {draw_progress_bar('燃費・寿命', p['eco'])}
-                </div>
-                
+            
+            <div style="margin-top: auto;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px;">
-                    <span style="font-size: 12px; color: #64748b; font-weight: bold;">交換費用総額</span>
+                    <span style="font-size: 11px; color: #64748b; font-weight: bold;">交換費用総額</span>
                     <div style="text-align: right;">
-                        {simulated_badge}
-                        <div style="font-size: 24px; font-weight: 900; color: #0f172a; line-height: 1;">¥{p['price']:,}</div>
+                        {simulated_badge}<br/>
+                        <span style="font-size: 24px; font-weight: 900; color: #0f172a; line-height: 1;">¥{p['price']:,}</span>
                     </div>
                 </div>
                 
@@ -412,14 +422,24 @@ for idx, p in enumerate(proposals):
                         約 {p['lifeMonths'] // 12}年{p['lifeMonths'] % 12}ヶ月使用可能予測
                     </div>
                     <div style="background: white; padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #bfdbfe;">
-                        <span style="font-size: 11px; font-weight: bold; color: #1e3a8a;">ひと月あたり</span>
+                        <span style="font-size: 10px; font-weight: bold; color: #1e3a8a;">ひと月あたり</span>
                         <span style="font-size: 18px; font-weight: 900; color: #2563eb;">¥{p['costPerMonth']:,}</span>
                     </div>
                 </div>
             </div>
         </div>
-        """
-        st.markdown(html, unsafe_allow_html=True)
+    </div>
+    """
+
+# 3つのカードを横並びにするラッパー (Flexbox)
+final_html = f"""
+<div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
+    {cards_html}
+</div>
+"""
+
+# st.markdownのunsafe_allow_htmlを使いつつ、確実に描画される形で出力
+st.write(final_html, unsafe_allow_html=True)
 
 st.caption("ご案内： 上記の月額コストは、お客様の走行距離をもとにタイヤが法定限界（1.6mm）に達するまでの予測使用期間で算出した参考値です。")
 st.markdown("---\n**🖨️ 印刷について:** ブラウザの印刷機能（`Ctrl+P` または `Cmd+P`）を利用してください。設定で「背景のグラフィックを印刷する」にチェックを入れ、「A4・横・余白なし」に設定すると綺麗に印刷できます。")
